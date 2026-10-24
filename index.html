@@ -485,4 +485,109 @@
 
             // 1. Masukkan Objek Lingkungan
             objects.forEach(obj => {
-              
+                if (obj.scene === currentScene) {
+                    renderList.push({
+                        type: 'object',
+                        data: obj,
+                        y: obj.y + obj.h // Dasar objek untuk sorting
+                    });
+                }
+            });
+
+            // 2. Masukkan NPC
+            npcs.forEach(npc => {
+                if (npc.scene === currentScene) {
+                    renderList.push({
+                        type: 'npc',
+                        data: npc,
+                        y: npc.y + 80 // Dasar NPC (kaki)
+                    });
+                }
+            });
+
+            // 3. Masukkan Player
+            renderList.push({
+                type: 'player',
+                data: player,
+                y: player.y + player.height
+            });
+
+            // Urutkan berdasarkan Y (Semakin bawah di layar, semakin akhir digambar)
+            renderList.sort((a, b) => a.y - b.y);
+
+            // Render semua dari atas ke bawah
+            renderList.forEach(item => {
+                if (item.type === 'object') {
+                    let o = item.data;
+                    if (o.type === 'house' || o.type === 'house_mayor') {
+                        drawRectPixel(ctx, o.x, o.y, o.w, o.h, '#d7ccc8', camera.x, camera.y); // Dinding
+                        drawRectPixel(ctx, o.x - 20, o.y - 40, o.w + 40, 100, '#b71c1c', camera.x, camera.y); // Atap
+                        drawRectPixel(ctx, o.x + o.w/2 - 30, o.y + o.h - 80, 60, 80, '#5d4037', camera.x, camera.y); // Pintu
+                    }
+                    if (o.type === 'tree') {
+                        drawRectPixel(ctx, o.x + 40, o.y + 100, 40, 80, '#795548', camera.x, camera.y); // Batang
+                        drawRectPixel(ctx, o.x, o.y, 120, 120, '#1b5e20', camera.x, camera.y); // Daun
+                    }
+                    if (o.type === 'water_plant' || o.type === 'flower') {
+                        drawRectPixel(ctx, o.x, o.y, o.w, o.h, '#8bc34a', camera.x, camera.y);
+                        if(o.type==='flower') drawRectPixel(ctx, o.x+20, o.y+20, 20, 20, '#e91e63', camera.x, camera.y);
+                    }
+                    if (o.type === 'field') {
+                        drawRectPixel(ctx, o.x, o.y, o.w, o.h, '#5d4037', camera.x, camera.y);
+                    }
+                    if (o.type === 'door') {
+                        drawRectPixel(ctx, o.x, o.y, o.w, o.h, '#ffcc80', camera.x, camera.y);
+                        ctx.fillStyle = '#000';
+                        ctx.font = '20px "Press Start 2P"';
+                        ctx.fillText("KELUAR", o.x - camera.x + 20, o.y - camera.y + 60);
+                    }
+                } 
+                else if (item.type === 'npc') {
+                    let n = item.data;
+                    let anim = (n.vx !== 0 || n.vy !== 0) ? (Math.sin(Date.now() / 100) * 5) : 0;
+                    
+                    // Bayangan
+                    drawRectPixel(ctx, n.x + 10, n.y + 70, 40, 15, 'rgba(0,0,0,0.3)', camera.x, camera.y);
+                    // Badan
+                    drawRectPixel(ctx, n.x, n.y + anim, 60, 80, n.color, camera.x, camera.y);
+                    // Kepala (Warna kulit retro)
+                    drawRectPixel(ctx, n.x + 10, n.y - 30 + anim, 40, 40, '#ffccbc', camera.x, camera.y);
+                    
+                    // Tanda Seru Quest (Jika aktif)
+                    if (n.id === currentQuest) {
+                        drawRectPixel(ctx, n.x + 25, n.y - 60 + anim, 10, 20, '#ffeb3b', camera.x, camera.y);
+                        drawRectPixel(ctx, n.x + 25, n.y - 35 + anim, 10, 10, '#ffeb3b', camera.x, camera.y);
+                    }
+                    
+                    // Nomor NPC
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '10px "Press Start 2P"';
+                    ctx.fillText(n.id, n.x - camera.x + 20, n.y - camera.y - 40 + anim);
+                }
+                else if (item.type === 'player') {
+                    let p = item.data;
+                    // Bayangan
+                    drawRectPixel(ctx, p.x + 10, p.y + p.height - 10, p.width - 20, 15, 'rgba(0,0,0,0.4)', camera.x, camera.y);
+                    // Baju
+                    drawRectPixel(ctx, p.x, p.y + p.animOffset, p.width, p.height, p.color, camera.x, camera.y);
+                    // Kepala
+                    drawRectPixel(ctx, p.x + 10, p.y - 30 + p.animOffset, 40, 40, '#ffccbc', camera.x, camera.y);
+                    // Topi (Khas Petani/Harvest Moon)
+                    drawRectPixel(ctx, p.x, p.y - 40 + p.animOffset, 60, 15, '#ffb300', camera.x, camera.y);
+                }
+            });
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Mulai Game
+        updateQuestInfo();
+        gameLoop();
+    };
+</script>
+</body>
+</html>
