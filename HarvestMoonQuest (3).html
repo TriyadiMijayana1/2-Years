@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Harvest Quest: Desa Ceria HD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Press Start 2P', monospace;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 56.25vh; /* 9:16 Aspect Ratio */
+            background-color: #000;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            image-rendering: pixelated;
+        }
+
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* === UI VIRTUAL CONTROLS === */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #joystick-zone {
+            position: absolute; bottom: 5%; left: 5%; width: 150px; height: 150px;
+            pointer-events: auto;
+        }
+
+        #joystick-base {
+            position: absolute; width: 120px; height: 120px; bottom: 15px; left: 15px;
+            background: rgba(255, 255, 255, 0.15); border: 6px solid rgba(255,255,255,0.8);
+            box-shadow: 4px 4px 0 rgba(0,0,0,0.5), inset 4px 4px 0 rgba(0,0,0,0.3);
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        #joystick-stick {
+            position: absolute; width: 48px; height: 48px; background: #fff;
+            border: 4px solid #000; box-shadow: inset -4px -4px 0px rgba(0,0,0,0.3);
+            transition: transform 0.05s ease-out;
+        }
+
+        #action-btn {
+            position: absolute; bottom: 8%; right: 8%; width: 80px; height: 80px;
+            background: #ef4444; border: 6px solid #000;
+            box-shadow: inset -4px -4px 0 #b91c1c, 6px 6px 0 rgba(0,0,0,0.6);
+            pointer-events: auto; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; user-select: none;
+        }
+        
+        #action-btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: inset -4px -4px 0 #b91c1c, 0px 0px 0 rgba(0,0,0,0.6);
+        }
+
+        .action-icon { font-size: 32px; font-weight: 900; color: #fff; text-shadow: 2px 2px 0 #000; }
+
+        /* === DIALOGUE & UI === */
+        #dialogue-overlay {
+            position: absolute; bottom: 22%; left: 5%; width: 90%; background: #fffdf0;
+            border: 6px solid #000; padding: 24px; box-shadow: 8px 8px 0 rgba(0,0,0,0.8);
+            pointer-events: auto; display: none; flex-direction: column; cursor: pointer;
+            animation: popIn 0.2s steps(3, end);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.9) translateY(10px); opacity: 0; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        #dialogue-name {
+            font-size: 16px; color: #fff; background: #000; padding: 8px 12px;
+            margin-bottom: 16px; align-self: flex-start; border: 4px solid #b45309;
+            text-transform: uppercase;
+        }
+
+        #dialogue-text { font-size: 14px; color: #000; line-height: 1.8; }
+
+        .tap-indicator {
+            align-self: flex-end; margin-top: 15px; font-size: 12px; color: #dc2626;
+            animation: blink 1s steps(2, start) infinite;
+        }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        #quest-tracker {
+            position: absolute; top: 4%; left: 50%; transform: translateX(-50%); 
+            background: rgba(0,0,0,0.85); width: 90%;
+            color: white; padding: 12px 16px; font-size: 10px; border: 4px solid #facc15;
+            box-shadow: 4px 4px 0 rgba(0,0,0,1); pointer-events: none; line-height: 1.5;
+            text-align: center;
+        }
+
+        .interact-hint {
+            position: absolute; color: #facc15; font-size: 36px;
+            text-shadow: 4px 4px 0 #000, -4px -4px 0 #000, 4px -4px 0 #000, -4px 4px 0 #000;
+            pointer-events: none; transform: translate(-50%, -100%);
+            animation: float 1s steps(4, end) infinite; display: none; z-index: 10;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(-50%, -100%) translateY(0); }
+            50% { transform: translate(-50%, -100%) translateY(-10px); }
+        }
+
+        #transition-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; opacity: 0; pointer-events: none; z-index: 50;
+            transition: opacity 0.5s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="game-canvas" width="1080" height="1920"></canvas>
+        <div id="interact-hint" class="interact-hint">!</div>
+        <div id="transition-overlay"></div>
+        <div id="ui-layer">
+            <div id="quest-tracker">MISI: Temui (1) Kakek Budi di ladang barat!</div>
+            <div id="joystick-zone"><div id="joystick-base"><div id="joystick-stick"></div></div></div>
+            <div id="action-btn"><span class="action-icon">A</span></div>
+            <div id="dialogue-overlay" onclick="closeDialogue()">
+                <div id="dialogue-name">Sistem</div>
+                <div id="dialogue-text">Teks...</div>
+                <div class="tap-indicator">Ketuk ▼</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+
+        const GAME_WIDTH = 1080;
+        const GAME_HEIGHT = 1920;
+
+        // UI Variables
+        const dialogueOverlay = document.getElementById('dialogue-overlay');
+        const dialogueName = document.getElementById('dialogue-name');
+        const dialogueText = document.getElementById('dialogue-text');
+        const interactHint = document.getElementById('interact-hint');
+        const actionBtn = document.getElementById('action-btn');
+        const questTracker = document.getElementById('quest-tracker');
+        const transitionOverlay = document.getElementById('transition-overlay');
+
+        // === KONTROL INPUT ===
+        let input = { dx: 0, dy: 0, interactTriggered: false };
+        const stick = document.getElementById('joystick-stick');
+        const base = document.getElementById('joystick-base');
+        let isDragging = false;
+        let baseCenter = { x: 0, y: 0 };
+        const maxStickDistance = 45;
+
+        function updateJoystickCenter() {
+            const rect = base.getBoundingClientRect();
+            baseCenter.x = rect.left + rect.width / 2;
+            baseCenter.y = rect.top + rect.height / 2;
+        }
+
+        function handleJoystick(clientX, clientY) {
+            let dx = clientX - baseCenter.x;
+            let dy = clientY - baseCenter.y;
+            let distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance > maxStickDistance) {
+                dx = (dx / distance) * maxStickDistance;
+                dy = (dy / distance) * maxStickDistance;
+            }
+            stick.style.transform = `translate(${dx}px, ${dy}px)`;
+            
+            let magnitude = distance > 0 ? (Math.min(distance, maxStickDistance) / maxStickDistance) : 0;
+            let angle = Math.atan2(dy, dx);
+            input.dx = Math.cos(angle) * magnitude;
+            input.dy = Math.sin(angle) * magnitude;
+        }
+
+        function resetJoystick() {
+            stick.style.transform = `translate(0px, 0px)`;
+            input.dx = 0; input.dy = 0;
+        }
+
+        const joystickZone = document.getElementById('joystick-zone');
+        joystickZone.addEventListener('touchstart', (e) => {
+            e.preventDefault(); updateJoystickCenter(); isDragging = true;
+            handleJoystick(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
+        joystickZone.addEventListener('touchmove', (e) => {
+            e.preventDefault(); if (isDragging) handleJoystick(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
+        joystickZone.addEventListener('touchend', (e) => { e.preventDefault(); isDragging = false; resetJoystick(); });
+        actionBtn.addEventListener('touchstart', (e) => { e.preventDefault(); input.interactTriggered = true; });
+        
+        const keys = {};
+        window.addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'Space' || e.code === 'KeyE') input.interactTriggered = true; });
+        window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+        function updateKeyboardInput() {
+            if (isDragging) return;
+            let x = 0, y = 0;
+            if (keys['KeyW'] || keys['ArrowUp']) y -= 1;
+            if (keys['KeyS'] || keys['ArrowDown']) y += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) x -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) x += 1;
+            if (x !== 0 && y !== 0) { const len = Math.sqrt(x*x + y*y); x /= len; y /= len; }
+            input.dx = x; input.dy = y;
+        }
+
+        // === QUEST SYSTEM ===
+        let globalQuestStep = 0;
+        const questDescriptions = [
+            "MISI: Temui (1) Kakek Ardi di ladang barat!",
+            "MISI: Siram 4 tanaman ladang (Dekati tanah, tekan A)",
+            "MISI: Lapor ke (1) Kakek di ladang.",
+            "MISI: Masuk ke rumah barat, temui (2) Nenek Juariah.",
+            "MISI: Antarkan bekal Nenek ke (3) Anna di pusat kota.",
+            "MISI: Temui (4) Pak Pos di jalanan pusat kota.",
+            "MISI: Antarkan paket ke (5) Pandai Besi di Timur.",
+            "MISI: Temui (6) Chef Juna dekat rumah Timur.",
+            "MISI: Minta jamur langka dari (7) Penyihir di Danau Tenggara.",
+            "MISI: Masuk Rumah Wali Kota (Utara), ambil ramuan di meja.",
+            "MISI: Berikan ramuan ke (8) Penjaga Hutan di Timur.",
+            "MISI: Cek kesehatan ke (9) Dokter di Hutan Barat Daya.",
+            "MISI: Masuk Rumah Wali Kota (Utara), temui (10) Wali Kota!",
+            "MISI SELESAI: Pesan Rahasia Terpecahkan! 🎉"
+        ];
+
+        function updateQuestUI() { questTracker.innerText = questDescriptions[globalQuestStep] || "Misi Selesai!"; }
+
+        function getActiveQuestNpcId() {
+            switch(globalQuestStep) {
+                case 0: case 1: case 2: return 1;
+                case 3: return 2;
+                case 4: return 3;
+                case 5: return 4;
+                case 6: return 5;
+                case 7: return 6;
+                case 8: return 7;
+                case 9: return null; // Mencari barang
+                case 10: return 8;
+                case 11: return 9;
+                case 12: return 10;
+                default: return null;
+            }
+        }
+
+        // === ENTITAS & MAP DATA ===
+        const player = {
+            type: 'player', x: 600, y: 1500, radius: 35, speed: 550, state: 'idle',
+            colors: { skin: '#ffcc99', shirt: '#3b82f6', pants: '#1e40af', hat: '#facc15' },
+            get baseY() { return this.y; }
+        };
+
+        const npcsData = [
+            { id: 1, name: "Kakek Ardi", colors: { skin: '#e5e5e5', shirt: '#78350f', pants: '#451a03', hair: '#d4d4d4' } },
+            { id: 2, name: "Nenek Juariah", colors: { skin: '#e5e5e5', shirt: '#9d174d', pants: '#4c0519', hair: '#a3a3a3' } },
+            { id: 3, name: "Anna", colors: { skin: '#ffcc99', shirt: '#ec4899', pants: '#be185d', hair: '#000000' } },
+            { id: 4, name: "Pak Pos", colors: { skin: '#ffcc99', shirt: '#0ea5e9', pants: '#0369a1', hair: '#b45309', hat: '#0284c7' } },
+            { id: 5, name: "Pandai Besi", colors: { skin: '#d97706', shirt: '#525252', pants: '#262626', hair: '#b91c1c' } },
+            { id: 6, name: "Chef Juna", colors: { skin: '#ffcc99', shirt: '#ffffff', pants: '#000000', hair: '#000000', hat: '#ffffff' } },
+            { id: 7, name: "Penyihir", colors: { skin: '#f3e8ff', shirt: '#a855f7', pants: '#7e22ce', hair: '#ffffff', hat:'#7e22ce' } },
+            { id: 8, name: "Penjaga Hutan", colors: { skin: '#ffcc99', shirt: '#166534', pants: '#14532d', hair: '#451a03', hat:'#166534' } },
+            { id: 9, name: "Dokter", colors: { skin: '#ffcc99', shirt: '#f8fafc', pants: '#94a3b8', hair: '#1e293b' } },
+            { id: 10, name: "Wali Kota", colors: { skin: '#ffcc99', shirt: '#1f2937', pants: '#111827', hair: '#fbbf24', hat: '#1f2937' } }
+        ];
+
+        function getDialogue(npcId) {
+            switch(npcId) {
+                case 1:
+                    if(globalQuestStep === 0) { globalQuestStep = 1; updateQuestUI(); return "Halo cu! Tolong bantu kakek menyiram 4 bibit tomat di ladang ini ya."; }
+                    if(globalQuestStep === 1) return "Gunakan tombol A di dekat tanah ladang untuk menyiram.";
+                    if(globalQuestStep === 2) { globalQuestStep = 3; updateQuestUI(); return "Kerja bagus! Nenek mencarimu di dalam rumah kita (Barat). Masuklah ke sana."; }
+                    return "Ladang kita akan panen besar!";
+                case 2:
+                    if(globalQuestStep < 3) return "Cari Kakek di luar dulu ya cu.";
+                    if(globalQuestStep === 3) { globalQuestStep = 4; updateQuestUI(); return "Ini bekal makan siang. Tolong antarkan ke Anna (3) di alun-alun kota ya."; }
+                    return "Hati-hati di jalan ya cu.";
+                case 3:
+                    if(globalQuestStep < 4) return "Cuaca cerah, enak buat jalan-jalan!";
+                    if(globalQuestStep === 4) { globalQuestStep = 5; updateQuestUI(); return "Wah makasih bekalnya! Tolong tanya ke Pak Pos (4) apakah paketku sudah tiba?"; }
+                    return "Kuenya pasti enak!";
+                case 4:
+                    if(globalQuestStep < 5) return "Ada banyak surat hari ini.";
+                    if(globalQuestStep === 5) { globalQuestStep = 6; updateQuestUI(); return "Paket Anna? Belum. Tapi tolong antarkan alat ini ke Pandai Besi (5) di Timur."; }
+                    return "Rajinlah berjalan kaki, sehat lho!";
+                case 5:
+                    if(globalQuestStep < 6) return "Palu ini sangat berat!";
+                    if(globalQuestStep === 6) { globalQuestStep = 7; updateQuestUI(); return "Terima kasih! Tolong beritahu Chef Juna (6) bahwa pisaunya sudah selesai diasah."; }
+                    return "Senjata dan alat pertanian adalah keahlianku.";
+                case 6:
+                    if(globalQuestStep < 7) return "Masakan butuh dedikasi!";
+                    if(globalQuestStep === 7) { globalQuestStep = 8; updateQuestUI(); return "Bagus! Sayangnya supku kurang bahan. Minta jamur ke Penyihir (7) di Danau Tenggara."; }
+                    return "Pisau tajam membuat potongan sempurna.";
+                case 7:
+                    if(globalQuestStep < 8) return "Hihihi... sihir itu indah.";
+                    if(globalQuestStep === 8) { globalQuestStep = 9; updateQuestUI(); return "Ini jamurnya. Ups! Ramuanku tertinggal di atas meja dalam Rumah Wali Kota (Utara). Tolong ambilkan!"; }
+                    return "Sihir air untuk tanaman selalu bekerja.";
+                case 8: // Penjaga
+                    if(globalQuestStep < 10) return "Hutan aman terkendali.";
+                    if(globalQuestStep === 10) { globalQuestStep = 11; updateQuestUI(); return "Ramuan? Wah ini untuk lututku yang sakit. Terima kasih! Dokter (9) mencarimu di barat daya."; }
+                    return "Berkat ramuan, lututku kuat lagi berlari.";
+                case 9:
+                    if(globalQuestStep < 11) return "Kesehatan adalah modal utama.";
+                    if(globalQuestStep === 11) { globalQuestStep = 12; updateQuestUI(); return "Kamu tampak sehat! Wali Kota (10) menunggumu di DALAM rumah besarnya dengan sebuah rahasia."; }
+                    return "Jangan lupa minum air yang banyak.";
+                case 10:
+                    if(globalQuestStep < 12) return "Desa ini terus berkembang!";
+                    if(globalQuestStep === 12) { globalQuestStep = 13; updateQuestUI(); return "SELAMAT! Kamu berhasil menyelesaikan misi!, ada pesan di berikutnya yah; }
+                    return "Selamat 2 Tahun Sayangkuuu, makasih yah sayang udah mau bertahan sampai detik ini, doa yang sama masih selalu dilantunkan. kita tetep terus bersama yah, lewatin rintangan satu satu, banyak banget soalnya rintangan nya. semoga kamu selalu sehat, selalu bahagia dengan aa, selalu seneng setiap hari nya. selamat 2 Tahun Sayangku, Cintaku, Istrikuuuuu <3";
+            }
+        }
+
+        const worldMaps = { outdoor: { w: 3200, h: 3200, objects: [], npcs: [] }, indoor_player: { w: 1080, h: 1080, objects: [], npcs: [] }, indoor_mayor: { w: 1080, h: 1080, objects: [], npcs: [] } };
+        let currentScene = 'outdoor';
+        let isTransitioning = false;
+
+        function createHouse(x, y, w, h, roof, wall, targetIndoor, doorTx, doorTy) {
+            worldMaps.outdoor.objects.push({ type: 'house', x, y, w, h, roof, wall, get baseY(){ return this.y + this.h; } });
+            worldMaps.outdoor.objects.push({ type: 'door', label: 'Masuk', x: x + w/2 - 40, y: y + h - 50, w: 80, h: 60, target: targetIndoor, tx: doorTx, ty: doorTy, get baseY(){ return this.y + this.h + 10; } });
+        }
+
+        // Bangun Peta
+        createHouse(300, 1200, 350, 350, '#0369a1', '#fed7aa', 'indoor_player', 540, 800); 
+        createHouse(1300, 300, 600, 400, '#b91c1c', '#fef08a', 'indoor_mayor', 540, 850); 
+        worldMaps.outdoor.objects.push({ type: 'house', x: 2300, y: 1300, w: 450, h: 350, roof: '#a16207', wall: '#e2e8f0', get baseY(){ return this.y + this.h; } }); 
+        worldMaps.outdoor.objects.push({ type: 'water', x: 1000, y: 2600, w: 2200, h: 600, get baseY(){ return -1; }}); 
+
+        // Ladang
+        for(let i=0; i<2; i++){
+            for(let j=0; j<2; j++){
+                worldMaps.outdoor.objects.push({ type: 'crop', id: i*2+j, isWatered: false, label: 'Siram', x: 400 + i*120, y: 1700 + j*120, w: 100, h: 100, get baseY(){ return -1; } });
+            }
+        }
+
+        function addTrees(startX, endX, startY, endY, density, treeType) {
+            for(let x=startX; x<endX; x+=120) {
+                for(let y=startY; y<endY; y+=120) {
+                    if(Math.random() < density) { worldMaps.outdoor.objects.push({ type: 'tree', treeType: treeType, x: x + (Math.random()-0.5)*60, y: y + (Math.random()-0.5)*60, radius: 40, get baseY(){ return this.y; }}); }
+                }
+            }
+        }
+        addTrees(0, 3200, 0, 250, 0.9, 'pine'); addTrees(0, 1000, 2800, 3200, 0.9, 'oak');
+        addTrees(0, 200, 0, 3200, 0.9, 'pine'); addTrees(3000, 3200, 0, 3200, 0.9, 'oak');
+
+        // Buat NPC dengan AI State
+        function spawnNPC(map, id, x, y) {
+            let data = npcsData.find(n => n.id === id);
+            map.npcs.push({
+                type: 'npc', x: x, y: y, radius: 35,
+                spawnX: x, spawnY: y, targetX: x, targetY: y,
+                state: 'idle', moveTimer: Math.random() * 3, speed: 120, data: data,
+                get baseY(){ return this.y; }
+            });
+        }
+
+        spawnNPC(worldMaps.outdoor, 1, 700, 1650);
+        spawnNPC(worldMaps.outdoor, 3, 1500, 1600);
+        spawnNPC(worldMaps.outdoor, 4, 1200, 1900);
+        spawnNPC(worldMaps.outdoor, 5, 2600, 1500);
+        spawnNPC(worldMaps.outdoor, 6, 2100, 1600);
+        spawnNPC(worldMaps.outdoor, 7, 2800, 2500);
+        spawnNPC(worldMaps.outdoor, 8, 2600, 2100);
+        spawnNPC(worldMaps.outdoor, 9, 800, 2200);
+
+        // Indoor
+        worldMaps.indoor_player.objects.push({ type: 'door', label: 'Keluar', x: 440, y: 950, w: 200, h: 100, target: 'outdoor', tx: 475, ty: 1650, get baseY(){ return this.y + this.h; } });
+        worldMaps.indoor_player.objects.push({ type: 'furniture', x: 200, y: 200, w: 180, h: 300, color: '#1e3a8a', get baseY(){ return this.y + this.h; } });
+        spawnNPC(worldMaps.indoor_player, 2, 700, 500);
+
+        worldMaps.indoor_mayor.objects.push({ type: 'door', label: 'Keluar', x: 440, y: 950, w: 200, h: 100, target: 'outdoor', tx: 1600, ty: 800, get baseY(){ return this.y + this.h; } });
+        worldMaps.indoor_mayor.objects.push({ type: 'quest_table', label: 'Ambil', x: 450, y: 400, w: 180, h: 120, color: '#78350f', get baseY(){ return this.y + this.h; } });
+        spawnNPC(worldMaps.indoor_mayor, 10, 700, 450);
+
+        // === FUNGSI MENGGAMBAR PIXEL ART (LEBIH DETAIL) ===
+        function drawPixelRect(context, x, y, w, h, color, outlineColor = '#000') {
+            context.fillStyle = outlineColor; context.fillRect(x - 4, y - 4, w + 8, h + 8);
+            context.fillStyle = color; context.fillRect(x, y, w, h);
+        }
+        function lightenColor(color, percent) {
+            let num = parseInt(color.replace("#",""),16), amt = Math.round(2.55 * percent), R = (num >> 16) + amt, B = (num >> 8 & 0x00FF) + amt, G = (num & 0x0000FF) + amt;
+            return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (B<255?B<1?0:B:255)*0x100 + (G<255?G<1?0:G:255)).toString(16).slice(1);
+        }
+
+        // Menggambar Tekstur Dithering Procedural
+        function drawNoiseTexture(ctx, x, y, w, h, baseColor, colorsArray, pixelSize) {
+            ctx.fillStyle = baseColor; ctx.fillRect(x, y, w, h);
+            for(let i = 0; i < w; i += pixelSize) {
+                for(let j = 0; j < h; j += pixelSize) {
+                    if(Math.random() < 0.25) {
+                        ctx.fillStyle = colorsArray[Math.floor(Math.random() * colorsArray.length)];
+                        ctx.fillRect(x + i, y + j, pixelSize, pixelSize);
+                    }
+                }
+            }
+        }
+
+        function drawHouse(context, house) {
+            let hX = house.x; let hY = house.y; let hW = house.w; let hH = house.h;
+            context.fillStyle = 'rgba(0,0,0,0.4)'; context.fillRect(hX + 10, hY + hH - 20, hW, 40); 
+            drawPixelRect(context, hX, hY + hH/2, hW, hH/2, house.wall);
+            // Tekstur Papan Kayu / Bata pada dinding
+            context.fillStyle = 'rgba(0,0,0,0.1)';
+            for(let i = hY + hH/2; i < hY + hH; i+=16) context.fillRect(hX, i, hW, 4);
+
+            let winW = 70; let winH = 70;
+            drawPixelRect(context, hX + 40, hY + hH/2 + 30, winW, winH, '#bae6fd');
+            drawPixelRect(context, hX + hW - winW - 40, hY + hH/2 + 30, winW, winH, '#bae6fd');
+            context.fillStyle = '#000'; context.fillRect(hX + 40 + winW/2 - 2, hY + hH/2 + 30, 4, winH);
+            context.fillRect(hX + 40, hY + hH/2 + 30 + winH/2 - 2, winW, 4);
+            context.fillRect(hX + hW - winW - 40 + winW/2 - 2, hY + hH/2 + 30, 4, winH);
+            context.fillRect(hX + hW - winW - 40, hY + hH/2 + 30 + winH/2 - 2, winW, 4);
+            
+            let roofH = hH/2 + 20;
+            context.fillStyle = '#000'; context.fillRect(hX - 24, hY - 4, hW + 48, roofH + 8);
+            for (let i = 0; i < roofH; i += 8) {
+                let inset = i * (hW / 2 / roofH) * 0.8; let curW = hW + 40 - inset * 2;
+                context.fillStyle = (i % 16 === 0) ? lightenColor(house.roof, 20) : house.roof; // Efek genteng
+                context.fillRect(hX - 20 + inset, hY + roofH - i, curW, 8);
+            }
+        }
+
+        function drawPineTree(context, tree) {
+            let tX = tree.x; let tY = tree.y;
+            context.fillStyle = 'rgba(0,0,0,0.3)'; context.beginPath(); context.ellipse(tX, tY, 40, 15, 0, 0, Math.PI*2); context.fill();
+            drawPixelRect(context, tX - 12, tY - 40, 24, 40, '#451a03');
+            const drawTriangle = (yPos, width, height, color1, color2) => {
+                context.fillStyle = '#000';
+                for(let i=0; i<height; i+=8) { let w = width * (1 - i/height); context.fillRect(tX - w/2 - 4, yPos - i - 4, w + 8, 16); }
+                for(let i=0; i<height; i+=8) { 
+                    let w = width * (1 - i/height);
+                    context.fillStyle = (i % 16 === 0) ? color1 : color2; // Dithering daun
+                    context.fillRect(tX - w/2, yPos - i, w, 8); 
+                }
+            };
+            drawTriangle(tY - 20, 140, 80, '#064e3b', '#065f46'); 
+            drawTriangle(tY - 50, 110, 70, '#047857', '#059669'); 
+            drawTriangle(tY - 90, 80, 60, '#10b981', '#34d399');
+        }
+
+        function drawOakTree(context, tree) {
+            let tX = tree.x; let tY = tree.y;
+            context.fillStyle = 'rgba(0,0,0,0.3)'; context.beginPath(); context.ellipse(tX, tY, 45, 18, 0, 0, Math.PI*2); context.fill();
+            drawPixelRect(context, tX - 16, tY - 50, 32, 50, '#713f12');
+            context.fillStyle = '#000'; context.fillRect(tX - 74, tY - 124, 148, 108);
+            drawNoiseTexture(context, tX - 70, tY - 120, 140, 100, '#15803d', ['#166534', '#22c55e'], 8);
+            drawNoiseTexture(context, tX - 50, tY - 120, 100, 40, '#22c55e', ['#4ade80'], 8); 
+            drawNoiseTexture(context, tX - 60, tY - 90, 40, 40, '#22c55e', ['#4ade80'], 8);
+        }
+
+        function drawCrop(context, crop) {
+            drawNoiseTexture(context, crop.x, crop.y, crop.w, crop.h, crop.isWatered ? '#1c1917' : '#451a03', [crop.isWatered ? '#292524' : '#78350f'], 8);
+            context.fillStyle = '#000'; context.strokeRect(crop.x, crop.y, crop.w, crop.h);
+            if (crop.isWatered) {
+                context.fillStyle = '#4ade80';
+                for(let i=0; i<3; i++){ for(let j=0; j<3; j++){ context.fillRect(crop.x + 20 + i*25, crop.y + 20 + j*25, 12, 12); } }
+            }
+        }
+
+        function drawWater(context, water, timestamp) {
+            drawPixelRect(context, water.x, water.y, water.w, water.h, '#0ea5e9', '#0284c7');
+            context.fillStyle = '#7dd3fc';
+            let offset = (timestamp / 15) % 100;
+            for(let i=0; i<water.w; i+=80) {
+                for(let j=0; j<water.h; j+=60) {
+                    let waveX = water.x + i + ((offset + j) % 60);
+                    if(waveX < water.x + water.w - 40) context.fillRect(waveX, water.y + j + 20, 24, 8);
+                }
+            }
+        }
+
+        function drawCharacter(context, entity, bounceOffset) {
+            let charX = entity.x; let charY = entity.y; let colors = entity.colors || entity.data.colors;
+            context.fillStyle = 'rgba(0,0,0,0.3)'; context.beginPath(); context.ellipse(charX, charY, 25, 10, 0, 0, Math.PI*2); context.fill();
+            let baseY = charY - 20 + bounceOffset;
+            
+            // Pants & Legs
+            context.fillStyle = '#000'; context.fillRect(charX - 22, baseY + 18, 44, 24);
+            context.fillStyle = colors.pants; context.fillRect(charX - 18, baseY + 20, 14, 18); context.fillRect(charX + 4, baseY + 20, 14, 18);
+            // Shirt
+            context.fillStyle = '#000'; context.fillRect(charX - 24, baseY - 22, 48, 44);
+            context.fillStyle = colors.shirt; context.fillRect(charX - 20, baseY - 20, 40, 40);
+            context.fillStyle = 'rgba(0,0,0,0.2)'; context.fillRect(charX - 20, baseY + 12, 40, 8); // Shadow on shirt
+            // Head
+            context.fillStyle = '#000'; context.fillRect(charX - 20, baseY - 54, 40, 36);
+            context.fillStyle = colors.skin; context.fillRect(charX - 16, baseY - 50, 32, 28);
+            // Eyes
+            context.fillStyle = '#000'; context.fillRect(charX - 10, baseY - 40, 6, 6); context.fillRect(charX + 4, baseY - 40, 6, 6);
+            
+            // Hat / Hair
+            if(colors.hat) {
+                context.fillStyle = '#000'; context.fillRect(charX - 34, baseY - 64, 68, 16); context.fillRect(charX - 24, baseY - 74, 48, 20);
+                context.fillStyle = colors.hat; context.fillRect(charX - 30, baseY - 60, 60, 8); context.fillRect(charX - 20, baseY - 70, 40, 10);
+            } else if (colors.hair) {
+                context.fillStyle = colors.hair; context.fillRect(charX - 20, baseY - 54, 40, 12); 
+                context.fillRect(charX - 20, baseY - 54, 12, 24); context.fillRect(charX + 8, baseY - 54, 12, 24); // Hair bangs
+            }
+        }
+
+        // === PRE-RENDER BACKGROUNDS (PIXEL DETAIL) ===
+        const bgs = { outdoor: document.createElement('canvas'), indoor_player: document.createElement('canvas'), indoor_mayor: document.createElement('canvas') };
+        
+        function renderMapBackgrounds() {
+            // Outdoor Textures
+            bgs.outdoor.width = 3200; bgs.outdoor.height = 3200;
+            let ctxO = bgs.outdoor.getContext('2d'); ctxO.imageSmoothingEnabled = false;
+            drawNoiseTexture(ctxO, 0, 0, 3200, 3200, '#10b981', ['#059669', '#34d399', '#047857'], 8); // Detailed Grass
+            
+            // Dirt paths
+            let dirtPaths = [
+                {x: 1200, y: 1000, w: 800, h: 800}, {x: 600, y: 1300, w: 600, h: 200},
+                {x: 1400, y: 700, w: 400, h: 300}, {x: 2000, y: 1300, w: 400, h: 200}
+            ];
+            for(let path of dirtPaths) {
+                drawNoiseTexture(ctxO, path.x, path.y, path.w, path.h, '#b45309', ['#92400e', '#d97706'], 12);
+            }
+
+            // Town Center Paving
+            ctxO.fillStyle = '#94a3b8'; ctxO.fillRect(1300, 1100, 600, 600);
+            for(let i=1300; i<1900; i+=80){ 
+                for(let j=1100; j<1700; j+=80){ 
+                    ctxO.fillStyle = '#cbd5e1'; ctxO.fillRect(i+5, j+5, 70, 70); 
+                    ctxO.fillStyle = '#e2e8f0'; ctxO.fillRect(i+5, j+5, 20, 20); // highlight
+                } 
+            }
+
+            // Indoors
+            function drawIndoorFloor(ctxI, woodColor, lineColor) {
+                ctxI.fillStyle = '#000'; ctxI.fillRect(0, 0, 1080, 1080);
+                drawNoiseTexture(ctxI, 100, 100, 880, 880, woodColor, [lineColor], 16);
+                
+                // Wood board lines
+                ctxI.fillStyle = 'rgba(0,0,0,0.4)';
+                for(let i=100; i<980; i+=40) ctxI.fillRect(100, i, 880, 4);
+                
+                // Red Carpet
+                ctxI.fillStyle = '#b91c1c'; ctxI.fillRect(340, 400, 400, 400);
+                drawNoiseTexture(ctxI, 360, 420, 360, 360, '#991b1b', ['#7f1d1d'], 8);
+            }
+            bgs.indoor_player.width = 1080; bgs.indoor_player.height = 1080;
+            drawIndoorFloor(bgs.indoor_player.getContext('2d'), '#92400e', '#78350f');
+            
+            bgs.indoor_mayor.width = 1080; bgs.indoor_mayor.height = 1080;
+            drawIndoorFloor(bgs.indoor_mayor.getContext('2d'), '#451a03', '#381404');
+        }
+        renderMapBackgrounds();
+
+        // === LOGIKA GAME & NPC AI ===
+        let isDialogueOpen = false;
+        let closestInteractable = null;
+        const interactionRadius = 160;
+
+        function checkRectCollision(px, py, radius, rect) {
+            let testX = px; let testY = py;
+            if (px < rect.x) testX = rect.x; else if (px > rect.x + rect.w) testX = rect.x + rect.w;
+            if (py < rect.y) testY = rect.y; else if (py > rect.y + rect.h) testY = rect.y + rect.h;
+            let distX = px - testX; let distY = py - testY;
+            return Math.sqrt((distX*distX) + (distY*distY)) <= radius;
+        }
+
+        function circleCollision(c1, c2) {
+            let dx = c1.x - c2.x; let dy = c1.y - c2.y;
+            return Math.sqrt(dx * dx + dy * dy) < (c1.radius + (c2.radius || c2.w/2));
+        }
+
+        function showDialogue(name, text) {
+            isDialogueOpen = true; input.interactTriggered = false; resetJoystick();
+            dialogueName.innerText = name; dialogueText.innerText = text;
+            dialogueOverlay.style.display = 'flex'; interactHint.style.display = 'none';
+        }
+        window.closeDialogue = function() {
+            if (isDialogueOpen) { isDialogueOpen = false; dialogueOverlay.style.display = 'none'; input.interactTriggered = false; }
+        }
+
+        function triggerSceneChange(target, tx, ty) {
+            if(isTransitioning) return;
+            isTransitioning = true; transitionOverlay.style.opacity = 1;
+            setTimeout(() => {
+                currentScene = target; player.x = tx; player.y = ty;
+                transitionOverlay.style.opacity = 0;
+                setTimeout(() => { isTransitioning = false; }, 500);
+            }, 500);
+        }
+
+        function updateGame(deltaTime) {
+            updateKeyboardInput();
+            if (isDialogueOpen || isTransitioning) { input.interactTriggered = false; return; }
+
+            let map = worldMaps[currentScene];
+            
+            // --- AI NPC LOGIC ---
+            let activeQuestNpcId = getActiveQuestNpcId();
+            for (let npc of map.npcs) {
+                let isTarget = (npc.data.id === activeQuestNpcId);
+                
+                npc.moveTimer -= deltaTime;
+                if (npc.moveTimer <= 0) {
+                    if (npc.state === 'idle') {
+                        if (isTarget) {
+                            // Target misi disuruh diam di tempat asalnya
+                            npc.targetX = npc.spawnX; npc.targetY = npc.spawnY;
+                        } else {
+                            // NPC Bebas berjalan-jalan acak dalam radius 200px dari asal
+                            let angle = Math.random() * Math.PI * 2;
+                            let dist = 30 + Math.random() * 150;
+                            npc.targetX = npc.spawnX + Math.cos(angle) * dist;
+                            npc.targetY = npc.spawnY + Math.sin(angle) * dist;
+                            
+                            // Jaga agar tidak keluar peta
+                            npc.targetX = Math.max(100, Math.min(npc.targetX, map.w - 100));
+                            npc.targetY = Math.max(100, Math.min(npc.targetY, map.h - 100));
+                        }
+                        npc.state = 'walk';
+                        npc.moveTimer = 1 + Math.random() * 3; // Jalan selama 1-4 detik
+                    } else {
+                        npc.state = 'idle';
+                        npc.moveTimer = 2 + Math.random() * 5; // Diam selama 2-7 detik
+                    }
+                }
+
+                if (npc.state === 'walk') {
+                    let dx = npc.targetX - npc.x; let dy = npc.targetY - npc.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist > 5) {
+                        let nx = npc.x + (dx/dist) * npc.speed * deltaTime;
+                        let ny = npc.y + (dy/dist) * npc.speed * deltaTime;
+                        
+                        // Basic collision map limit for NPC
+                        let canMove = true;
+                        for (let obs of map.objects) {
+                            let hitBox = null;
+                            if(obs.type === 'house') hitBox = {x: obs.x, y: obs.y + obs.h/2, w: obs.w, h: obs.h/2};
+                            if(obs.type === 'water') hitBox = {x: obs.x, y: obs.y, w: obs.w, h: obs.h};
+                            if(hitBox && checkRectCollision(nx, ny, npc.radius, hitBox)) canMove = false;
+                        }
+                        if(canMove) { npc.x = nx; npc.y = ny; } else { npc.state = 'idle'; npc.moveTimer = 1; }
+                    } else { npc.state = 'idle'; }
+                }
+            }
+
+            // --- PLAYER LOGIC ---
+            let moveStep = player.speed * deltaTime;
+            let nextX = player.x + input.dx * moveStep;
+            let nextY = player.y + input.dy * moveStep;
+            let canMoveX = true; let canMoveY = true;
+
+            if (nextX - player.radius < 0 || nextX + player.radius > map.w) canMoveX = false;
+            if (nextY - player.radius < 0 || nextY + player.radius > map.h) canMoveY = false;
+
+            for (let obs of map.objects) {
+                let hitBox = null;
+                if(obs.type === 'house') hitBox = {x: obs.x, y: obs.y + obs.h/2, w: obs.w, h: obs.h/2};
+                if(obs.type === 'tree') hitBox = {x: obs.x - 12, y: obs.y - 40, w: 24, h: 40};
+                if(obs.type === 'water') hitBox = {x: obs.x, y: obs.y, w: obs.w, h: obs.h};
+                if(obs.type === 'furniture' || obs.type === 'quest_table') hitBox = {x: obs.x, y: obs.y, w: obs.w, h: obs.h};
+                
+                if(hitBox) {
+                    if (checkRectCollision(nextX, player.y, player.radius, hitBox)) canMoveX = false;
+                    if (checkRectCollision(player.x, nextY, player.radius, hitBox)) canMoveY = false;
+                }
+            }
+
+            for (let npc of map.npcs) {
+                if (circleCollision({x: nextX, y: player.y, radius: player.radius}, npc)) canMoveX = false;
+                if (circleCollision({x: player.x, y: nextY, radius: player.radius}, npc)) canMoveY = false;
+            }
+
+            if (canMoveX) player.x = nextX;
+            if (canMoveY) player.y = nextY;
+            player.state = (Math.abs(input.dx) > 0 || Math.abs(input.dy) > 0) ? 'walking' : 'idle';
+
+            // Interaction Check
+            closestInteractable = null; let minDistance = interactionRadius;
+            let interactables = [...map.npcs, ...map.objects.filter(o => o.type==='door' || o.type==='crop' || o.type==='quest_table')];
+            
+            for (let item of interactables) {
+                let ix = item.x + (item.w ? item.w/2 : 0); let iy = item.y + (item.h ? item.h/2 : 0);
+                let dist = Math.sqrt((player.x - ix)**2 + (player.y - iy)**2);
+                if (dist < minDistance) { minDistance = dist; closestInteractable = item; }
+            }
+
+            if (closestInteractable && !isDialogueOpen) {
+                const scaleX = canvas.clientWidth / GAME_WIDTH; const scaleY = canvas.clientHeight / GAME_HEIGHT;
+                let cameraX = Math.max(0, Math.min(player.x - GAME_WIDTH / 2, map.w - GAME_WIDTH));
+                let cameraY = Math.max(0, Math.min(player.y - GAME_HEIGHT / 2, map.h - GAME_HEIGHT));
+                let ix = closestInteractable.x + (closestInteractable.w ? closestInteractable.w/2 : 0);
+                let iy = closestInteractable.y - (closestInteractable.type==='npc' ? 120 : 0);
+                interactHint.style.left = ((ix - cameraX) * scaleX) + 'px'; 
+                interactHint.style.top = ((iy - cameraY) * scaleY) + 'px';
+                interactHint.style.display = 'block';
+                interactHint.innerText = closestInteractable.label ? `[A] ${closestInteractable.label}` : '!';
+            } else { interactHint.style.display = 'none'; }
+
+            if (input.interactTriggered) {
+                if (closestInteractable) {
+                    if (closestInteractable.type === 'npc') {
+                        // Paksa NPC berbalik ke idle saat diajak bicara
+                        closestInteractable.state = 'idle'; closestInteractable.targetX = closestInteractable.x; closestInteractable.targetY = closestInteractable.y;
+                        showDialogue(closestInteractable.data.name, getDialogue(closestInteractable.data.id));
+                    } 
+                    else if (closestInteractable.type === 'door') triggerSceneChange(closestInteractable.target, closestInteractable.tx, closestInteractable.ty);
+                    else if (closestInteractable.type === 'crop') {
+                        if(globalQuestStep === 1 && !closestInteractable.isWatered) {
+                            closestInteractable.isWatered = true;
+                            let wateredCount = map.objects.filter(o => o.type === 'crop' && o.isWatered).length;
+                            if(wateredCount >= 4) { globalQuestStep = 2; updateQuestUI(); showDialogue("Sistem", "Semua tanaman telah disiram! Lapor ke Kakek."); }
+                            else { showDialogue("Sistem", "Menyiram tanaman... (" + wateredCount + "/4)"); }
+                        } else if(closestInteractable.isWatered) showDialogue("Sistem", "Tanaman ini sudah basah.");
+                        else showDialogue("Sistem", "Tanahnya kering.");
+                    }
+                    else if (closestInteractable.type === 'quest_table') {
+                        if(globalQuestStep === 9) {
+                            globalQuestStep = 10; updateQuestUI();
+                            showDialogue("Sistem", "Mendapatkan [Ramuan Ajaib] dari atas meja!");
+                        } else showDialogue("Sistem", "Meja kerja Wali Kota. Ada tumpukan kertas.");
+                    }
+                }
+                input.interactTriggered = false;
+            }
+        }
+
+        // === RENDER UTAMA ===
+        function drawGame(timestamp) {
+            let map = worldMaps[currentScene];
+            let cameraX = Math.max(0, Math.min(player.x - GAME_WIDTH / 2, map.w - GAME_WIDTH));
+            let cameraY = Math.max(0, Math.min(player.y - GAME_HEIGHT / 2, map.h - GAME_HEIGHT));
+
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.save(); ctx.translate(-cameraX, -cameraY);
+
+            ctx.drawImage(bgs[currentScene], 0, 0);
+
+            let renderQueue = [...map.objects, ...map.npcs, player];
+            renderQueue.sort((a, b) => a.baseY - b.baseY);
+
+            for(let item of renderQueue) {
+                // Culling
+                let ix = item.x; let iy = item.y; let iw = item.w || 200; let ih = item.h || 200;
+                if(ix + iw < cameraX || ix - iw > cameraX + GAME_WIDTH || iy + ih < cameraY || iy - ih > cameraY + GAME_HEIGHT) continue; 
+
+                if(item.type === 'house') drawHouse(ctx, item);
+                else if(item.type === 'tree') { if(item.treeType === 'pine') drawPineTree(ctx, item); else drawOakTree(ctx, item); }
+                else if(item.type === 'water') drawWater(ctx, item, timestamp);
+                else if(item.type === 'door') { /* Pintu nyatu sama rumah/lantai */ }
+                else if(item.type === 'crop') drawCrop(ctx, item);
+                else if(item.type === 'furniture' || item.type === 'quest_table') {
+                    drawPixelRect(ctx, item.x, item.y, item.w, item.h, item.color);
+                    if(item.type === 'quest_table') {
+                        ctx.fillStyle = '#fef08a'; ctx.fillRect(item.x+10, item.y+10, item.w-20, item.h-20);
+                        if(globalQuestStep === 9) { drawPixelRect(ctx, item.x + item.w/2 - 10, item.y + item.h/2 - 20, 20, 30, '#ef4444', '#000'); ctx.fillStyle = '#fff'; ctx.fillRect(item.x + item.w/2 - 4, item.y + item.h/2 - 16, 4, 8); }
+                    }
+                }
+                else if(item.type === 'npc') {
+                    let bounce = item.state === 'walk' ? Math.floor((Math.sin(timestamp / 100) * 12) / 4) * 4 : Math.floor((Math.sin(timestamp / 400 + item.data.id) * 4) / 4) * 4;
+                    drawCharacter(ctx, item, bounce);
+                    
+                    let boxY = item.y - 120 + bounce;
+                    ctx.fillStyle = '#000'; ctx.fillRect(item.x - 24, boxY - 24, 48, 48);
+                    ctx.fillStyle = (item.data.id === getActiveQuestNpcId()) ? '#facc15' : '#dc2626'; // Warna kuning jika NPC tujuan aktif
+                    ctx.fillRect(item.x - 20, boxY - 20, 40, 40);
+                    ctx.fillStyle = (item.data.id === getActiveQuestNpcId()) ? '#000' : '#ffffff'; 
+                    ctx.font = '16px "Press Start 2P"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(item.data.id.toString(), item.x, boxY + 2);
+                }
+                else if(item.type === 'player') {
+                    let bounce = player.state === 'walking' ? Math.floor((Math.sin(timestamp / 100) * 12) / 4) * 4 : Math.floor((Math.sin(timestamp / 400) * 4) / 4) * 4;
+                    drawCharacter(ctx, item, bounce);
+                }
+            }
+            ctx.restore();
+        }
+
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            let dt = Math.min((timestamp - lastTime) / 1000, 0.1); 
+            lastTime = timestamp; if(!dt) dt = 1/60;
+            updateGame(dt); drawGame(timestamp);
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.onload = function() { updateQuestUI(); requestAnimationFrame(gameLoop); };
+    </script>
+</body>
+</html>
